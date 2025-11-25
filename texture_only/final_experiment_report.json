@@ -1,0 +1,31 @@
+{
+  "experiment_info": {
+    "model": "Texture-Only (Deep Neural Network)",
+    "total_runs": 10,
+    "base_seed": 42,
+    "batch_size": 32,
+    "max_epochs": 50,
+    "total_experiment_time_sec": 478524.21,
+    "total_experiment_time_min": 7975.4,
+    "results_directory": "./results/texture_only_10runs_20251001_192932",
+    "timestamp": "20251001_192932"
+  },
+  "average_performance": {
+    "test_accuracy_mean": 0.664,
+    "test_accuracy_std": 0.0163,
+    "test_precision_mean": 0.6725,
+    "test_precision_std": 0.0141,
+    "test_recall_mean": 0.6689,
+    "test_recall_std": 0.0172,
+    "test_f1_mean": 0.6688,
+    "test_f1_std": 0.0153,
+    "test_roc_auc_mean": 0.8386,
+    "test_roc_auc_std": 0.0097
+  },
+  "best_performance": {
+    "best_accuracy_run": 3,
+    "best_accuracy_value": 0.6854,
+    "best_f1_run": 3,
+    "best_f1_value": 0.6879
+  }
+}

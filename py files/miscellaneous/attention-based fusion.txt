@@ -1,0 +1,217 @@
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torchvision.models as models
+import numpy as np
+from skimage.feature import graycomatrix, graycoprops, local_binary_pattern
+from skimage.filters import gabor
+import pywt
+from torchvision.models import swin_t, Swin_T_Weights
+import pytorch_lightning as pl
+import cv2
+
+def check_gpu_memory():
+    if torch.cuda.is_available():
+        print(f"GPU Memory Stats:")
+        for i in range(torch.cuda.device_count()):
+            allocated = torch.cuda.memory_allocated(i) / 1024**3
+            reserved = torch.cuda.memory_reserved(i) / 1024**3
+            print(f"GPU {i}: Allocated {allocated:.2f} GiB, Reserved {reserved:.2f} GiB")
+
+class TextureExtractor:
+    def __init__(self, glcm_distances=[1, 2, 3], glcm_angles=[0, np.pi/4, np.pi/2, 3*np.pi/4], lbp_P=24, lbp_R=3, wavelet='db1'):
+        self.glcm_distances = glcm_distances
+        self.glcm_angles = glcm_angles
+        self.lbp_P = lbp_P
+        self.lbp_R = lbp_R
+        self.wavelet = wavelet
+        self.properties = ['contrast', 'dissimilarity', 'homogeneity', 'ASM', 'correlation']
+
+    def __call__(self, img: np.ndarray) -> np.ndarray:
+        # Convert RGB to grayscale if necessary
+        if img.ndim == 3 and img.shape[-1] == 3:
+            img = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+        elif img.ndim != 2:
+            raise ValueError(f"Expected 2D grayscale or 3D RGB image, got shape {img.shape}")
+
+        # Ensure image is uint8
+        if img.dtype != np.uint8:
+            img = (255 * img).astype(np.uint8)
+
+        # GLCM features
+        glcm = graycomatrix(img, distances=self.glcm_distances, angles=self.glcm_angles,
+                            levels=256, symmetric=True, normed=True)
+        feats_glcm = []
+        for prop in self.properties:
+            prop_vals = graycoprops(glcm, prop).flatten()
+            feats_glcm.extend(prop_vals.tolist())
+
+        # LBP features
+        lbp = local_binary_pattern(img, self.lbp_P, self.lbp_R, method='uniform')
+        n_bins = self.lbp_P + 2
+        hist, _ = np.histogram(lbp.ravel(), bins=n_bins, range=(0, n_bins), density=True)
+        feats_lbp = hist.tolist()
+
+        # Gabor features
+        feats_gabor = []
+        for freq in [0.2, 0.4, 0.6]:
+            for theta in [0, np.pi/4, np.pi/2]:
+                real, imag = gabor(img, frequency=freq, theta=theta)
+                feats_gabor.extend([real.mean(), real.var(), imag.mean(), imag.var()])
+
+        # Wavelet features
+        LL, (LH, HL, HH) = pywt.dwt2(img.astype(np.float32), self.wavelet)
+        feats_wavelet = [LL.mean(), LH.mean(), HL.mean(), HH.mean(),
+                         LL.std(), LH.std(), HL.std(), HH.std()]
+
+        # Combine and return as float32
+        features = np.hstack([feats_glcm, feats_lbp, feats_gabor, feats_wavelet]).astype(np.float32)
+        if len(features) != 130:
+            raise ValueError(f"TextureExtractor produced {len(features)} features, expected 130")
+        return features
+
+class HybridClassifierModule(nn.Module):
+    """
+    Complete hybrid classifier with CNN and texture feature fusion
+    """
+    def __init__(self, cfg):
+        super().__init__()
+        
+        # Extract parameters from config
+        self.num_classes = cfg.model.num_classes
+        self.cnn_dim = cfg.model.get('cnn_dim', 1000)  # Default for most pretrained models
+        self.texture_dim = cfg.model.get('texture_dim', 130)  # From TextureExtractor
+        self.hidden_dim = cfg.model.get('hidden_dim', 128)
+        self.fusion_type = cfg.model.get('fusion_type', 'adaptive')
+        self.dropout_rate = cfg.model.get('dropout_rate', 0.5)
+        
+        # CNN backbone
+        if cfg.model.backbone == 'resnet50':
+            self.backbone = models.resnet50(pretrained=True)
+            self.backbone.fc = nn.Identity()  # Remove final classification layer
+            self.cnn_dim = 2048
+        elif cfg.model.backbone == 'swin_t':
+            self.backbone = swin_t(weights=Swin_T_Weights.IMAGENET1K_V1)
+            self.backbone.head = nn.Identity()
+            self.cnn_dim = 768
+        else:
+            raise ValueError(f"Unsupported backbone: {cfg.model.backbone}")
+            
+        # Texture extractor
+        self.texture_extractor = TextureExtractor()
+        
+        # Fusion mechanism
+        if self.fusion_type == 'adaptive':
+            # Adaptive attention that considers both feature types
+            self.cnn_attention = nn.Sequential(
+                nn.Linear(self.cnn_dim, self.hidden_dim),
+                nn.ReLU(),
+                nn.Linear(self.hidden_dim, 1),
+                nn.Sigmoid()
+            )
+            
+            self.texture_attention = nn.Sequential(
+                nn.Linear(self.texture_dim, self.hidden_dim),
+                nn.ReLU(),
+                nn.Linear(self.hidden_dim, 1),
+                nn.Sigmoid()
+            )
+            
+            fused_dim = self.cnn_dim + self.texture_dim
+            
+        elif self.fusion_type == 'cross_attention':
+            # Cross-attention between CNN and texture features
+            embed_dim = min(self.cnn_dim, self.texture_dim)
+            self.cross_attention = nn.MultiheadAttention(
+                embed_dim=embed_dim, 
+                num_heads=8, 
+                dropout=0.1,
+                batch_first=True
+            )
+            
+            # Project features to same dimension for cross-attention
+            self.cnn_proj = nn.Linear(self.cnn_dim, embed_dim)
+            self.tex_proj = nn.Linear(self.texture_dim, embed_dim)
+            
+            fused_dim = embed_dim * 2
+            
+        elif self.fusion_type == 'gated':
+            # Gated fusion mechanism
+            self.gate = nn.Sequential(
+                nn.Linear(self.cnn_dim + self.texture_dim, self.hidden_dim),
+                nn.ReLU(),
+                nn.Linear(self.hidden_dim, self.cnn_dim + self.texture_dim),
+                nn.Sigmoid()
+            )
+            
+            fused_dim = self.cnn_dim + self.texture_dim
+        else:
+            # Simple concatenation
+            fused_dim = self.cnn_dim + self.texture_dim
+            
+        # Final classifier
+        self.classifier = nn.Sequential(
+            nn.Dropout(self.dropout_rate),
+            nn.Linear(fused_dim, self.hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(self.dropout_rate),
+            nn.Linear(self.hidden_dim, self.num_classes)
+        )
+        
+    def forward(self, images):
+        batch_size = images.shape[0]
+        
+        # Extract CNN features
+        cnn_feat = self.backbone(images)
+        
+        # Extract texture features for each image in batch
+        texture_feats = []
+        for i in range(batch_size):
+            # Convert tensor to numpy for texture extraction
+            img_np = images[i].cpu().numpy().transpose(1, 2, 0)  # CHW to HWW
+            img_np = (img_np * 255).astype(np.uint8)  # Denormalize if needed
+            
+            texture_feat = self.texture_extractor(img_np)
+            texture_feats.append(texture_feat)
+            
+        texture_feat = torch.tensor(np.stack(texture_feats), 
+                                  device=images.device, 
+                                  dtype=torch.float32)
+        
+        # Apply fusion mechanism
+        if self.fusion_type == 'adaptive':
+            # Compute attention weights for each feature type
+            cnn_weight = self.cnn_attention(cnn_feat)
+            texture_weight = self.texture_attention(texture_feat)
+            
+            # Apply attention weights
+            weighted_cnn = cnn_feat * cnn_weight
+            weighted_texture = texture_feat * texture_weight
+            
+            # Concatenate weighted features
+            fused = torch.cat([weighted_cnn, weighted_texture], dim=1)
+            
+        elif self.fusion_type == 'cross_attention':
+            # Project to same dimension
+            cnn_proj = self.cnn_proj(cnn_feat).unsqueeze(1)  # Add sequence dimension
+            tex_proj = self.tex_proj(texture_feat).unsqueeze(1)
+            
+            # Apply cross-attention
+            attn_out, _ = self.cross_attention(cnn_proj, tex_proj, tex_proj)
+            fused = torch.cat([attn_out.squeeze(1), tex_proj.squeeze(1)], dim=1)
+            
+        elif self.fusion_type == 'gated':
+            # Simple concatenation first
+            concat_feat = torch.cat([cnn_feat, texture_feat], dim=1)
+            
+            # Apply gating
+            gate_weights = self.gate(concat_feat)
+            fused = concat_feat * gate_weights
+            
+        else:
+            # Default: simple concatenation
+            fused = torch.cat([cnn_feat, texture_feat], dim=1)
+        
+        # Final classification
+        output = self.classifier(fused)
+        return output

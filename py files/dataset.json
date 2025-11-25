@@ -1,0 +1,30 @@
+{
+  "images": [],
+  "annotations": [],
+  "categories": [
+    {
+      "id": 1,
+      "name": "neoplastic",
+      "supercategory": "",
+      "color": "#fc0000",
+      "metadata": {},
+      "keypoint_colors": []
+    },
+    {
+      "id": 2,
+      "name": "aphthous",
+      "supercategory": "",
+      "color": "#00fc00",
+      "metadata": {},
+      "keypoint_colors": []
+    },
+    {
+      "id": 3,
+      "name": "traumatic",
+      "supercategory": "",
+      "color": "#fcfcfc",
+      "metadata": {},
+      "keypoint_colors": []
+    }
+  ]
+}

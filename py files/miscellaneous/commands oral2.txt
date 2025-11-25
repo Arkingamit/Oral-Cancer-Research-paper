@@ -1,0 +1,97 @@
+commands oral2
+git clone https://github.com/MarcoParola/oral2.git
+cd oral2
+python -m venv env
+env/Scripts/activate
+python -m pip install -r requirements.txt
+pip install torch
+module load anaconda3
+
+-----------------------------------------------------
+## set the dataset path ##
+-----------------------------------------------------
+datasets --> oral1
+change the 
+(1) data --> datasets
+(2) dataset.json --> coco_datasets.json   
+
+also change the config .yaml files data --> datasets
+-----------------------------------------------------
+python -m scripts.check-dataset --dataset datasets\coco_dataset.json
+python -m scripts.simplify-dataset --folder datasets
+python -m scripts.split-dataset --folder datasets
+python -m scripts.dataset-stats --dataset datasets\coco_dataset.json
+
+-------------------------------------------------------------------------------------------------------------------------------------------
+## before running below code edit script\dataset-stary.py ##
+-------------------------------------------------------------------------------------------------------------------------------------------
+import argparse
+import json
+
+def compute_stats(json_data):
+    category_count = {}
+
+    # Count occurrences of each category_id in annotations
+    for annotation in json_data.get("annotations", []):
+        cat_id = annotation.get("category_id")
+        if cat_id is not None:
+            category_count[cat_id] = category_count.get(cat_id, 0) + 1
+
+    # Print name and count of each category
+    print("Category statistics:")
+    for category in json_data.get("categories", []):
+        cat_id = category["id"]
+        cat_name = category["name"]
+        count = category_count.get(cat_id, 0)
+        print(f"- {cat_name}: {count}")
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description="Compute category-wise annotation stats.")
+    parser.add_argument("--dataset", type=str, required=True, help="Path to the dataset JSON file")
+    args = parser.parse_args()
+
+    with open(args.dataset, "r") as f:
+        dataset = json.load(f)
+
+    compute_stats(dataset)
+
+
+------------------------------------------------------------------------------------------------------------------------------------------
+
+python -m scripts.dataset-stats --dataset datasets\train.json
+python -m scripts.dataset-stats --dataset datasets\test.json
+python scripts\plot-distribution.py --dataset datasets\coco_dataset.json
+pip install numpy
+pip install matplotlib
+pip install hydra-core
+pip install pytorch_lightning
+pip install scikit-learn
+pip install torch
+pip install torchvision
+pip install tensorboard
+pip install pandas
+pip install seaborn
+pip install opencv-python
+pip install -U albumentations
+-----------------------------------------------------------------------------------------------------------------------------------------
+python classifier-train.py
+from src.datasets import classifier_datamodule
+callbacks.append(LossLogCallback(cfg))  # ❌ Passing an argument
+to:
+callbacks.append(LossLogCallback())  # ✅ No arguments
+---------------------------------------------------------------
+replace
+---------------------------------------------------------------
+classifier.py
+        elif "Swin" in weights_cls:
+            in_features = (
+                self.model.head.in_features 
+                if hasattr(self.model.head, 'in_features') 
+                else self.model.head[1].in_features
+            )
+            self.model.head = torch.nn.Sequential(
+                torch.nn.Dropout(0.5),
+                torch.nn.Linear(in_features, 64)
+            )
+--------------------------------------------------------------
+

@@ -1,0 +1,31 @@
+{
+  "experiment_info": {
+    "model": "EfficientNet-B0",
+    "total_runs": 10,
+    "base_seed": 42,
+    "batch_size": 32,
+    "max_epochs": 50,
+    "total_experiment_time_sec": 1011300.7,
+    "total_experiment_time_min": 16855.01,
+    "results_directory": "./results/efficientnet_b0_10runs_20250915_122439",
+    "timestamp": "20250915_122439"
+  },
+  "average_performance": {
+    "test_accuracy_mean": 0.8067,
+    "test_accuracy_std": 0.0235,
+    "test_precision_mean": 0.812,
+    "test_precision_std": 0.0221,
+    "test_recall_mean": 0.8092,
+    "test_recall_std": 0.0246,
+    "test_f1_mean": 0.808,
+    "test_f1_std": 0.0228,
+    "test_roc_auc_mean": 0.9387,
+    "test_roc_auc_std": 0.0159
+  },
+  "best_performance": {
+    "best_accuracy_run": 2,
+    "best_accuracy_value": 0.8539,
+    "best_f1_run": 2,
+    "best_f1_value": 0.855
+  }
+}

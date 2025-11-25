@@ -1,0 +1,2 @@
+Model,Runs,Avg_Train_Accuracy,Avg_Test_Accuracy,Avg_Test_Precision,Avg_Test_Recall,Avg_Test_F1,Avg_Test_AUC,Avg_Train_Time,Avg_Test_Time
+efficientnet_b0,1,0.9927,0.7978,0.8005,0.8005,0.7984,0.9572,91392.35s,364.00s

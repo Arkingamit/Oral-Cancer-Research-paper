@@ -1,0 +1,2 @@
+timestamp,model_name,seed,train_time_seconds,test_time_seconds,train_accuracy,test_accuracy,true_positive,true_negative,false_positive,false_negative,precision,recall,f1_score,auc_roc
+2025-09-09 13:29:57,efficientnet_b0,42,87065.36031270027,345.54351830482483,0.893203854560852,0.8089887640449438,72,-17,17,17,0.8089195771295732,0.8089887640449438,0.8087916420264143,0.9353426853189337

@@ -1,0 +1,18 @@
+import csv
+
+input_path = "datasets/ranking.csv"
+output_path = "datasets/ranking_cleaned.csv"  # Or use same path to overwrite
+
+# Read the file and skip the second line
+with open(input_path, "r", encoding="utf-8") as infile:
+    lines = infile.readlines()
+
+# Sanity check: Ensure at least 3 lines (header + second + data)
+if len(lines) < 3:
+    raise ValueError("ranking.csv has too few lines. Expected at least header + one data row.")
+
+# Write all lines except the second line
+with open(output_path, "w", encoding="utf-8") as outfile:
+    outfile.writelines([lines[0]] + lines[2:])  # Keep header and all rows after second
+
+print(f"Cleaned ranking CSV saved to: {output_path}")
